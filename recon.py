@@ -53,6 +53,8 @@ def stream_output(pipe, target_stdin, lock: threading.Lock):
 
 
 def run_subdomain_discovery(domain: str):
+    lock = threading.Lock()
+
     commands = [
         ['subfinder', '-d', domain, '-silent', '-nc', '-all'],
         ['assetfinder', '--subs-only', domain],
@@ -83,7 +85,7 @@ def run_subdomain_discovery(domain: str):
         p = subprocess.Popen(cmd, stdout=subprocess.PIPE)
         t = threading.Thread(
             target=stream_output,
-            args=(p.stdout, p_tr.stdin)
+            args=(p.stdout, p_tr.stdin, lock)
         )
         t.start()
         threads.append(t)
