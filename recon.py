@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+import argparse
 from pathlib import Path
 import sys
 import re
@@ -52,7 +53,7 @@ def stream_output(pipe, target_stdin, lock: threading.Lock):
         pipe.close()
 
 
-def run_subdomain_discovery(domain: str):
+def run_subdomain_discovery(domain: str) -> tuple[str, str]:
     lock = threading.Lock()
 
     commands = [
@@ -76,7 +77,8 @@ def run_subdomain_discovery(domain: str):
     p_anew = subprocess.Popen(
         ['anew', str(SUBDOMAINS_FILENAME_FULL_PATH)],
         stdin=p_sort.stdout,
-        stdout=subprocess.DEVNULL,
+        stdout=subprocess.PIPE,
+        text=True,
     )
 
     threads: list[threading.Thread] = []
@@ -93,8 +95,11 @@ def run_subdomain_discovery(domain: str):
     for t in threads:
         t.join()
 
-    p_tr.stdin.close()
-    p_anew.communicate()
+    if p_tr.stdin:
+        p_tr.stdin.close()
+    standard_out, standard_err = p_anew.communicate()
+
+    return standard_out, standard_err
 
 
 def run_directory_setup(name: str):
@@ -113,26 +118,42 @@ def run_directory_setup(name: str):
         full_path.touch(exist_ok=True)
 
 
+def check_alive_hosts(stdout: str):
+    command = ['httpx', '-silent']
+
+    result = subprocess.run(
+        command,
+        input=stdout,
+        text=True,
+        capture_output=True
+    )
+
+    alive_hosts = result.stdout.splitlines()
+
+    return alive_hosts
+
+
 def main():
-    if len(sys.argv) < 2:
-        print_error('Not enough arguments provided')
-        print_usage()
+    parser = argparse.ArgumentParser(description="Subdomain Automation for Discovery & Scanning hosts")
+    parser.add_argument('-d', '--domain', required=True)
+
+    args = parser.parse_args()
+    if not is_domain_valid(args.domain):
+        print_error("Domain format not valid.")
         return
 
-    domain = sys.argv[1]
-    if not is_domain_valid(domain=domain):
-        print_error("Invalid domain format.")
-        print_usage()
-        return
-    
     banner_box('BUG BOUNTY', 'Automating Subdomain Discovery & Scanning')
 
     print_info(f'Setting up directories')
-    run_directory_setup(name=domain)
+    run_directory_setup(name=args.domain)
 
-    print_ok(f'target: {domain}')
-    print_info(f'Enumerating subdomains')
-    run_subdomain_discovery(domain=domain)
+    print_ok(f'target: {args.domain}')
+    print_info(f'Enumerating subdomains with subfinder, assetfinder, and amass.')
+    stdout, _ = run_subdomain_discovery(domain=args.domain)
+
+    print_info(f"Using httpx to check for alive hosts.")
+    hosts = check_alive_hosts(stdout)
+    print(hosts)
 
 
 if __name__ == "__main__":
