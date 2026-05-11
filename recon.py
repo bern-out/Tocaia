@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 from pathlib import Path
 import sys
+import re
 import os
 from datetime import datetime
 import subprocess
@@ -34,6 +35,11 @@ def print_usage():
 Usage:
     recon <domain>
     ''')
+
+
+def is_domain_valid(domain: str) -> bool:
+    pattern = r'^(?:[a-zA-Z0-9](?:[a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?\.)+[a-zA-Z]{2,}$'
+    return re.match(pattern, domain) is not None
 
 
 def stream_output(pipe, target_stdin, lock: threading.Lock):
@@ -107,11 +113,15 @@ def run_directory_setup(name: str):
 
 def main():
     if len(sys.argv) < 2:
-        print('Not enough arguments provided')
+        print_error('Not enough arguments provided')
         print_usage()
         return
 
     domain = sys.argv[1]
+    if not is_domain_valid(domain=domain):
+        print_error("Invalid domain format.")
+        print_usage()
+        return
     
     banner_box('BUG BOUNTY', 'Automating Subdomain Discovery & Scanning')
 
