@@ -9,9 +9,10 @@ import subprocess
 from custom_logging import *
 import threading
 
-SUBDOMAINS_FOLDER = 'domains'
-SUBDOMAINS_FILENAME = None
-SUBDOMAINS_FILENAME_FULL_PATH = None
+DOMAINS_FOLDER_RELATIVE_PATH = 'domains'
+DOMAIN_FOLDER = None
+DOMAIN_FILENAME = None
+DOMAIN_FILE_RELATIVE_PATH = None
 
 
 def banner_box(text: str, subtitle: str):
@@ -71,14 +72,8 @@ def run_subdomain_discovery(domain: str) -> tuple[str, str]:
     p_sort = subprocess.Popen(
         ['sort', '-u'],
         stdin=p_tr.stdout,
-        stdout=subprocess.PIPE
-    )
-
-    p_anew = subprocess.Popen(
-        ['anew', str(SUBDOMAINS_FILENAME_FULL_PATH)],
-        stdin=p_sort.stdout,
         stdout=subprocess.PIPE,
-        text=True,
+        text=True
     )
 
     threads: list[threading.Thread] = []
@@ -97,25 +92,26 @@ def run_subdomain_discovery(domain: str) -> tuple[str, str]:
 
     if p_tr.stdin:
         p_tr.stdin.close()
-    standard_out, standard_err = p_anew.communicate()
+    standard_out, standard_err = p_sort.communicate()
 
     return standard_out, standard_err
 
 
 def run_directory_setup(name: str):
-    subdomain_folder_path = Path(SUBDOMAINS_FOLDER)
-    os.makedirs(subdomain_folder_path, exist_ok=True)
+    # example: ./domains/<domain>/
+    global DOMAINS_FOLDER_RELATIVE_PATH
+    DOMAINS_FOLDER_RELATIVE_PATH = f"{DOMAINS_FOLDER_RELATIVE_PATH}/{name}"
 
-    global SUBDOMAINS_FILENAME
+    global DOMAIN_FILENAME
     fileDateFormat = "%Y%m%d_%H%M%S"
-    SUBDOMAINS_FILENAME = f'{name}-{str(datetime.now().strftime(fileDateFormat))}.txt'
+    # example: 20260511_160028.txt
+    DOMAIN_FILENAME = str(datetime.now().strftime(fileDateFormat)) + '.txt'
 
-    global SUBDOMAINS_FILENAME_FULL_PATH
-    SUBDOMAINS_FILENAME_FULL_PATH = SUBDOMAINS_FOLDER + '/' + SUBDOMAINS_FILENAME
+    # example: ./domains/<domain>/20260511_160028.txt
+    global DOMAIN_FILE_RELATIVE_PATH
+    DOMAIN_FILE_RELATIVE_PATH =  DOMAINS_FOLDER_RELATIVE_PATH + '/' + DOMAIN_FILENAME
 
-    full_path = Path(SUBDOMAINS_FILENAME_FULL_PATH)
-    if not os.path.exists(full_path):
-        full_path.touch(exist_ok=True)
+    os.makedirs(DOMAINS_FOLDER_RELATIVE_PATH, exist_ok=True)
 
 
 def check_alive_hosts(stdout: str):
@@ -139,8 +135,7 @@ def main():
 
     args = parser.parse_args()
     if not is_domain_valid(args.domain):
-        print_error("Domain format not valid.")
-        return
+        raise argparse.ArgumentError(args.domain, "Domain format not valid.")
 
     banner_box('BUG BOUNTY', 'Automating Subdomain Discovery & Scanning')
 
@@ -148,12 +143,19 @@ def main():
     run_directory_setup(name=args.domain)
 
     print_ok(f'target: {args.domain}')
-    print_info(f'Enumerating subdomains with subfinder, assetfinder, and amass.')
+    print_info(f'Enumerating subdomains using subfinder, assetfinder, and amass.\nThis could take a while.')
     stdout, _ = run_subdomain_discovery(domain=args.domain)
 
     print_info(f"Using httpx to check for alive hosts.")
     hosts = check_alive_hosts(stdout)
-    print(hosts)
+
+    global DOMAIN_FILE_RELATIVE_PATH
+    if DOMAIN_FILE_RELATIVE_PATH is None:
+        raise FileNotFoundError(f"Domain file not found: {DOMAIN_FILE_RELATIVE_PATH}")
+
+    domain_file_relative_path = Path(DOMAIN_FILE_RELATIVE_PATH)
+    with open(domain_file_relative_path, 'w') as f:
+        f.write('\n'.join(hosts))
 
 
 if __name__ == "__main__":
