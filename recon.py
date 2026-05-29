@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 import argparse
 from pathlib import Path
-import sys
+import json
 import re
 import os
 from datetime import datetime
@@ -9,11 +9,22 @@ import subprocess
 from custom_logging import *
 import threading
 
-DOMAINS_FOLDER_RELATIVE_PATH = 'domains'
-DOMAIN_FOLDER = None
-DOMAIN_FILENAME = None
-DOMAIN_FILE_RELATIVE_PATH = None
-
+CONST_DOMAINS_FOLDER = 'domains'
+CONST_DOMAIN_FOLDER = None
+CONST_DOMAIN_REPORT = None
+CONST_RECON_TIMESTAMP = ''
+CONST_INTERESTING_PORTS = [
+    # databases
+    '3306', '5432', '27017', '6379', '9200', '9300', '5984', '1433',
+    # Dev / Debug / Admin
+    '8080', '8443', '8888', '9090', '3000', '4848', '9000',
+    # Remote Access
+    '2222', '5900', '3389', '5985', '7070',
+    # Message Queues
+    '5672', '9092', '2181', '4369', '11211',
+    # Cloud / Containers
+    '2375', '2379', '10250'
+]
 
 def banner_box(text: str, subtitle: str):
     lines = text.split("\n")
@@ -60,7 +71,7 @@ def run_subdomain_discovery(domain: str) -> tuple[str, str]:
     commands = [
         ['subfinder', '-d', domain, '-silent', '-nc', '-all'],
         ['assetfinder', '--subs-only', domain],
-        ['amass', 'enum', '-passive', '-d', domain]
+        ['amass', 'enum', '-silent', '-d', domain]
     ]
 
     p_tr = subprocess.Popen(
@@ -98,21 +109,19 @@ def run_subdomain_discovery(domain: str) -> tuple[str, str]:
 
 
 def run_directory_setup(name: str):
-    # example: ./domains/<domain>/
-    global DOMAINS_FOLDER_RELATIVE_PATH
-    DOMAINS_FOLDER_RELATIVE_PATH = f"{DOMAINS_FOLDER_RELATIVE_PATH}/{name}"
+    global CONST_DOMAINS_FOLDER, CONST_DOMAIN_FOLDER, CONST_DOMAIN_REPORT, CONST_RECON_TIMESTAMP
+    CONST_DOMAIN_FOLDER = f"{CONST_DOMAINS_FOLDER}/{name}"
 
-    global DOMAIN_FILENAME
     fileDateFormat = "%Y%m%d_%H%M%S"
-    # example: 20260511_160028.txt
-    DOMAIN_FILENAME = str(datetime.now().strftime(fileDateFormat)) + '.txt'
+    report_prefix = 'report_'
+    timestamp = datetime.now().strftime(fileDateFormat)
+    CONST_RECON_TIMESTAMP = timestamp
 
-    # example: ./domains/<domain>/20260511_160028.txt
-    global DOMAIN_FILE_RELATIVE_PATH
-    DOMAIN_FILE_RELATIVE_PATH =  DOMAINS_FOLDER_RELATIVE_PATH + '/' + DOMAIN_FILENAME
+    CONST_DOMAIN_FILENAME = report_prefix + str(timestamp) + '.json'
 
-    os.makedirs(DOMAINS_FOLDER_RELATIVE_PATH, exist_ok=True)
+    CONST_DOMAIN_REPORT =  CONST_DOMAIN_FOLDER + '/' + CONST_DOMAIN_FILENAME
 
+    os.makedirs(CONST_DOMAIN_FOLDER, exist_ok=True)
 
 def check_alive_hosts(stdout: str):
     command = ['httpx', '-silent']
@@ -129,9 +138,32 @@ def check_alive_hosts(stdout: str):
     return alive_hosts
 
 
+def scan_host_ports(host: str) -> list[str]:
+    nmap_cmd = [
+        'nmap', '-Pn', '-T4', '--top-ports', '1000', '--open', host
+    ]
+
+    nmap_cmd = subprocess.run(
+        nmap_cmd,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.DEVNULL,
+        text=True,
+    )
+
+    ports: list[str] = []
+
+    for line in nmap_cmd.stdout.splitlines():
+        if '/tcp' or '/udp' in line:
+            first = line.split('/')[0].strip()
+            if first.isdigit():
+                ports.append(first)
+
+    return ports
+
+
 def main():
     parser = argparse.ArgumentParser(description="Subdomain Automation for Discovery & Scanning hosts")
-    parser.add_argument('-d', '--domain', required=True)
+    parser.add_argument('-d', '--domain', required=True, help='Target domain that will be scanned')
 
     args = parser.parse_args()
     if not is_domain_valid(args.domain):
@@ -139,23 +171,58 @@ def main():
 
     banner_box('BUG BOUNTY', 'Automating Subdomain Discovery & Scanning')
 
-    print_info(f'Setting up directories')
+    print_info('Setting up directories')
     run_directory_setup(name=args.domain)
 
     print_ok(f'target: {args.domain}')
-    print_info(f'Enumerating subdomains using subfinder, assetfinder, and amass.\nThis could take a while.')
-    stdout, _ = run_subdomain_discovery(domain=args.domain)
+    print_info('Enumerating subdomains using subfinder, assetfinder, and amass.')
+    subdomains_stdout, _ = run_subdomain_discovery(domain=args.domain)
 
-    print_info(f"Using httpx to check for alive hosts.")
-    hosts = check_alive_hosts(stdout)
+    print_ok(f"Got a list of {len(subdomains_stdout.splitlines())} subdomains!")
 
-    global DOMAIN_FILE_RELATIVE_PATH
-    if DOMAIN_FILE_RELATIVE_PATH is None:
-        raise FileNotFoundError(f"Domain file not found: {DOMAIN_FILE_RELATIVE_PATH}")
+    print_info("Using httpx to check for alive hosts.")
+    http_hosts = check_alive_hosts(subdomains_stdout)
+    subdomains: list[str] = []
 
-    domain_file_relative_path = Path(DOMAIN_FILE_RELATIVE_PATH)
-    with open(domain_file_relative_path, 'w') as f:
-        f.write('\n'.join(hosts))
+    for http_host in http_hosts:
+        _, subdomain = http_host.split("//")
+        subdomains.append(subdomain)
+
+
+    report = {}
+
+    global CONST_DOMAIN_REPORT
+    if CONST_DOMAIN_REPORT is None:
+        raise FileNotFoundError(f"Domain file not found: {CONST_DOMAIN_REPORT}")
+
+    report_file_path = Path(CONST_DOMAIN_REPORT)
+
+    report['alive-subdomains'] = subdomains
+    report['port-scan'] = {}
+
+    if len(subdomains) > 0:
+        print_info("Starting nmap scan for hosts.")
+        for host in subdomains:
+            print_info(f"Scanning ports: {host}")
+
+            ports = scan_host_ports(host=host)
+            report['port-scan'][host] = ports
+
+            if len(ports) < 1:
+                print_warn(f"No ports found for {host}")
+                break
+
+            common = set(CONST_INTERESTING_PORTS) & set(ports)
+            if bool(common):
+                print_warn(f"Interesting ports found: {common}")
+
+            print_ok(f"{len(ports)} ports found for {host}")
+
+    else:
+        print_warn("No alive hosts found. Skipping port scan.")
+
+    with open(report_file_path, 'w') as f:
+        json.dump(report, f, indent=4, ensure_ascii=False)
 
 
 if __name__ == "__main__":
