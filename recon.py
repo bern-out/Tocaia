@@ -113,11 +113,10 @@ def run_directory_setup(name: str):
     CONST_DOMAIN_FOLDER = f"{CONST_DOMAINS_FOLDER}/{name}"
 
     fileDateFormat = "%Y%m%d_%H%M%S"
-    report_prefix = 'report_'
     timestamp = datetime.now().strftime(fileDateFormat)
     CONST_RECON_TIMESTAMP = timestamp
 
-    CONST_DOMAIN_FILENAME = report_prefix + str(timestamp) + '.json'
+    CONST_DOMAIN_FILENAME = str(timestamp) + '.json'
 
     CONST_DOMAIN_REPORT =  CONST_DOMAIN_FOLDER + '/' + CONST_DOMAIN_FILENAME
 
@@ -139,11 +138,33 @@ def check_alive_hosts(stdout: str):
 
 
 def scan_host_ports(host: str) -> list[str]:
-    nmap_cmd = [
+    result = [
         'nmap', '-Pn', '-T4', '--top-ports', '1000', '--open', host
     ]
 
-    nmap_cmd = subprocess.run(
+    result = subprocess.run(
+        result,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.DEVNULL,
+        text=True,
+    )
+
+    ports: list[str] = []
+
+    for line in result.stdout.splitlines():
+        if '/tcp' or '/udp' in line:
+            first = line.split('/')[0].strip()
+            if first.isdigit():
+                ports.append(first)
+
+    return ports
+
+def scan_all_host_ports(host: str) -> list[str]:
+    nmap_cmd = [
+        'nmap', '-Pn', '-T5', '-p-', '--open', host
+    ]
+
+    result = subprocess.run(
         nmap_cmd,
         stdout=subprocess.PIPE,
         stderr=subprocess.DEVNULL,
@@ -152,13 +173,40 @@ def scan_host_ports(host: str) -> list[str]:
 
     ports: list[str] = []
 
-    for line in nmap_cmd.stdout.splitlines():
+    for line in result.stdout.splitlines():
         if '/tcp' or '/udp' in line:
             first = line.split('/')[0].strip()
             if first.isdigit():
                 ports.append(first)
 
     return ports
+
+
+def verify_for_honeypot(host: str) -> bool:
+    ephemeral_ports = ['65535', '49152']
+    separator = ','
+    str_ephemeral_ports = separator.join(ephemeral_ports)
+
+    nmap_cmd = [
+        'nmap', '-Pn', '-p', str_ephemeral_ports, '--open', host
+    ]
+
+    result = subprocess.run(
+        nmap_cmd,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.DEVNULL,
+        text=True
+    )
+
+    ports: list[str] = []
+
+    for line in result.stdout.splitlines():
+        if '/tcp' or '/udp' in line:
+            first = line.split('/')[0].strip()
+            if first.isdigit():
+                ports.append(first)
+
+    return len(ports) > 0
 
 
 def main():
@@ -174,7 +222,7 @@ def main():
     print_info('Setting up directories')
     run_directory_setup(name=args.domain)
 
-    print_ok(f'target: {args.domain}')
+    print_ok(f'Target: {args.domain}')
     print_info('Enumerating subdomains using subfinder, assetfinder, and amass.')
     subdomains_stdout, _ = run_subdomain_discovery(domain=args.domain)
 
@@ -189,7 +237,10 @@ def main():
         subdomains.append(subdomain)
 
 
-    report = {}
+    report = {
+        'alive-subdomains': [],
+        'port-scan': {},
+    }
 
     global CONST_DOMAIN_REPORT
     if CONST_DOMAIN_REPORT is None:
@@ -206,7 +257,6 @@ def main():
             print_info(f"Scanning ports: {host}")
 
             ports = scan_host_ports(host=host)
-            report['port-scan'][host] = ports
 
             if len(ports) < 1:
                 print_warn(f"No ports found for {host}")
@@ -216,7 +266,19 @@ def main():
             if bool(common):
                 print_warn(f"Interesting ports found: {common}")
 
+                print_info("Verifing if it's a honeypot.")
+                if verify_for_honeypot(host=host):
+                    print_warn("High ephemeral ports detected. Skipping target.")
+                    continue
+
+                print_info("The host doesn't seem to be a honeypot. Going for full ports scan")
+                ports = scan_all_host_ports(host=host)
+
+                print_info(f"All ports open for {host}: {ports}")
+
             print_ok(f"{len(ports)} ports found for {host}")
+
+            report['port-scan'][host] = ports
 
     else:
         print_warn("No alive hosts found. Skipping port scan.")
