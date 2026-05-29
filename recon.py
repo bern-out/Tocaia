@@ -8,6 +8,7 @@ from datetime import datetime
 import subprocess
 from custom_logging import *
 import threading
+from typing import TypedDict
 
 CONST_DOMAINS_FOLDER = 'domains'
 CONST_DOMAIN_FOLDER = None
@@ -25,6 +26,10 @@ CONST_INTERESTING_PORTS = [
     # Cloud / Containers
     '2375', '2379', '10250'
 ]
+
+class HostReport(TypedDict):
+    nmap_scan: list[str]
+    nuclei_scan: list[str]
 
 def banner_box(text: str, subtitle: str):
     lines = text.split("\n")
@@ -209,9 +214,25 @@ def verify_for_honeypot(host: str) -> bool:
     return len(ports) > 0
 
 
+def run_http_nuclei_scan(host: str) -> list[str]:
+    nuclei_cmd = [
+        'nuclei', '-t', 'http', '-nc', '-silent', '-u', host
+    ]
+
+    result = subprocess.run(
+        nuclei_cmd,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.DEVNULL,
+        text=True
+    )
+
+    return result.stdout.splitlines()
+
+
 def main():
     parser = argparse.ArgumentParser(description="Subdomain Automation for Discovery & Scanning hosts")
     parser.add_argument('-d', '--domain', required=True, help='Target domain that will be scanned')
+    parser.add_argument('-ig', '--ignore-honeypot', action='store_true', help="Skips ephemeral ports scan.")
 
     args = parser.parse_args()
     if not is_domain_valid(args.domain):
@@ -236,24 +257,23 @@ def main():
         _, subdomain = http_host.split("//")
         subdomains.append(subdomain)
 
-
-    report = {
-        'alive-subdomains': [],
-        'port-scan': {},
-    }
-
     global CONST_DOMAIN_REPORT
     if CONST_DOMAIN_REPORT is None:
         raise FileNotFoundError(f"Domain file not found: {CONST_DOMAIN_REPORT}")
 
     report_file_path = Path(CONST_DOMAIN_REPORT)
 
-    report['alive-subdomains'] = subdomains
-    report['port-scan'] = {}
+    reports: dict[str, HostReport] = {}
 
     if len(subdomains) > 0:
         print_info("Starting nmap scan for hosts.")
         for host in subdomains:
+
+            host_report: HostReport = {
+                'nmap_scan': [],
+                'nuclei_scan': [],
+            }
+
             print_info(f"Scanning ports: {host}")
 
             ports = scan_host_ports(host=host)
@@ -266,25 +286,39 @@ def main():
             if bool(common):
                 print_warn(f"Interesting ports found: {common}")
 
-                print_info("Verifing if it's a honeypot.")
-                if verify_for_honeypot(host=host):
-                    print_warn("High ephemeral ports detected. Skipping target.")
-                    continue
+                if not args.ignore_honeypot:
+                    print_info("Verifing if it's a honeypot.")
 
-                print_info("The host doesn't seem to be a honeypot. Going for full ports scan")
+                    if verify_for_honeypot(host=host):
+                        print_warn("High ephemeral ports detected (port spoofer). Skipping target.")
+                        continue
+
+                    print_info("The host doesn't seem to be a honeypot.")
+
+                print_info("Going for full port scan.")
+
                 ports = scan_all_host_ports(host=host)
 
                 print_info(f"All ports open for {host}: {ports}")
 
             print_ok(f"{len(ports)} ports found for {host}")
 
-            report['port-scan'][host] = ports
+            host_report['nmap_scan'] = ports
+
+            print_info(f"Running nuclei against {host}")
+            found_vulnerabilities = run_http_nuclei_scan(host=host)
+
+            if len(found_vulnerabilities) > 0:
+                print_info(f"Found {len(found_vulnerabilities)} possible vulnerabilities.")
+
+            host_report['nuclei_scan'] = found_vulnerabilities
+            reports.setdefault(host, host_report)
 
     else:
         print_warn("No alive hosts found. Skipping port scan.")
 
     with open(report_file_path, 'w') as f:
-        json.dump(report, f, indent=4, ensure_ascii=False)
+        json.dump(reports, f, indent=4, ensure_ascii=False)
 
 
 if __name__ == "__main__":
