@@ -245,7 +245,7 @@ def run_notify(message: str):
 def main():
     parser = argparse.ArgumentParser(description="Subdomain Automation for Discovery & Scanning hosts")
     parser.add_argument('-d', '--domain', required=True, help='Target domain that will be scanned')
-    parser.add_argument('-ig', '--ignore-honeypot', action='store_true', help="Skips ephemeral ports scan.")
+    parser.add_argument('-igh', '--ignore-honeypot', action='store_true', help="Skips ephemeral ports scan.")
 
     args = parser.parse_args()
     if not is_domain_valid(args.domain):
