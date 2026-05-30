@@ -228,6 +228,19 @@ def run_http_nuclei_scan(host: str) -> list[str]:
 
     return result.stdout.splitlines()
 
+def run_notify(message: str):
+    notify_cmd = [
+        'notify', '-bulk', '-id', 'recon-lab'
+    ]
+
+    subprocess.run(
+        notify_cmd,
+        input=message,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.DEVNULL,
+        text=True
+    )
+
 
 def main():
     parser = argparse.ArgumentParser(description="Subdomain Automation for Discovery & Scanning hosts")
@@ -285,6 +298,9 @@ def main():
             common = set(CONST_INTERESTING_PORTS) & set(ports)
             if bool(common):
                 print_warn(f"Interesting ports found: {common}")
+
+                print_info("Sending notification to user.")
+                run_notify(f"Interesting ports fund for {host}")
 
                 if not args.ignore_honeypot:
                     print_info("Verifing if it's a honeypot.")
