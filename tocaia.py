@@ -47,6 +47,19 @@ class HostReport(TypedDict):
     nmap_scan: list[str]
     nuclei_scan: list[str]
 
+
+build_port_alert = lambda host, ports, message: f"""
+🚨 **{message}**
+
+🎯 **Host:** `{host}`
+
+📡 **Open Ports**
+```text
+{ports}
+```
+"""
+
+
 def banner_box(text: str, subtitle: str):
     lines = text.split("\n")
     if subtitle:
@@ -334,7 +347,7 @@ def main():
                 print_warn(f"Interesting ports found: {common}")
 
                 print_info("Sending notification to user.")
-                run_notify(f"Interesting ports fund for {host}")
+                run_notify(build_port_alert(host, ports, message="Interesting ports found."))
 
                 if not args.ignore_honeypot:
                     print_info("Verifing if it's a honeypot.")
