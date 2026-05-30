@@ -9,6 +9,7 @@ import subprocess
 from custom_logging import *
 import threading
 from typing import TypedDict
+import shutil
 
 CONST_DOMAINS_FOLDER = 'domains'
 CONST_DOMAIN_FOLDER = None
@@ -25,6 +26,21 @@ CONST_INTERESTING_PORTS = [
     '5672', '9092', '2181', '4369', '11211',
     # Cloud / Containers
     '2375', '2379', '10250'
+]
+
+RECON_TOOLS = [
+    {
+        "name": "subfinder",
+        "cmd": lambda domain: ['subfinder', '-d', domain, '-silent', '-nc', '-all'],
+    },
+    {
+        "name": "assetfinder",
+        "cmd": lambda domain: ['assetfinder', '--subs-only', domain],
+    },
+    {
+        "name": "amass",
+        "cmd": lambda domain: ['amass', 'enum', '-silent', '-d', domain],
+    },
 ]
 
 class HostReport(TypedDict):
@@ -73,11 +89,11 @@ def stream_output(pipe, target_stdin, lock: threading.Lock):
 def run_subdomain_discovery(domain: str) -> tuple[str, str]:
     lock = threading.Lock()
 
-    commands = [
-        ['subfinder', '-d', domain, '-silent', '-nc', '-all'],
-        ['assetfinder', '--subs-only', domain],
-        ['amass', 'enum', '-silent', '-d', domain]
-    ]
+    commands = build_commands(domain=domain)
+
+    if len(commands) < 1:
+        tools: list[str] = [str(tool['name']) for tool in RECON_TOOLS]
+        raise Exception(f"No enumeration tools are installed: {', '.join(tools)}")
 
     p_tr = subprocess.Popen(
         ['tr', '[:upper:]', '[:lower:]'],
@@ -242,6 +258,21 @@ def run_notify(message: str):
     )
 
 
+def is_tool_installed(tool_name: str) -> bool:
+    return shutil.which(tool_name) is not None
+
+
+def build_commands(domain: str) -> list[list[str]]:
+    commands = []
+    for tool in RECON_TOOLS:
+        if is_tool_installed(tool_name=tool['name']):
+            commands.append(tool['cmd'](domain))
+            continue
+        print_warn(f"Tool not installed: {tool['name']}")
+        print_info("Skipping.")
+    return commands
+
+
 def main():
     parser = argparse.ArgumentParser(description="Subdomain Automation for Discovery & Scanning hosts")
     parser.add_argument('-d', '--domain', required=True, help='Target domain that will be scanned')
@@ -257,7 +288,10 @@ def main():
     run_directory_setup(name=args.domain)
 
     print_ok(f'Target: {args.domain}')
-    print_info('Enumerating subdomains using subfinder, assetfinder, and amass.')
+
+    tools: list[str] = [str(tool['name']) for tool in RECON_TOOLS]
+
+    print_info(f'Enumerating subdomains using {", ".join(tools)}')
     subdomains_stdout, _ = run_subdomain_discovery(domain=args.domain)
 
     print_ok(f"Got a list of {len(subdomains_stdout.splitlines())} subdomains!")
