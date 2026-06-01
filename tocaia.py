@@ -209,7 +209,7 @@ def scan_all_host_ports(host: str) -> list[str]:
     ports: list[str] = []
 
     for line in result.stdout.splitlines():
-        if '/tcp' or '/udp' in line:
+        if '/tcp' in line or '/udp' in line:
             first = line.split('/')[0].strip()
             if first.isdigit():
                 ports.append(first)
@@ -341,10 +341,13 @@ def main():
         os.makedirs(ew_dir, exist_ok=True)
 
         with tempfile.NamedTemporaryFile(mode='w', suffix='.txt', delete=False) as tmp:
-            tmp.write('\n'.join(http_hosts))
+            tmp.write('\n'.join(http_hosts) + '\n')
             tmp_path = tmp.name
 
-        take_screenshot(tmp_path, ew_dir)
+        try:
+            take_screenshot(tmp_path, ew_dir)
+        finally:
+            os.unlink(tmp_path)
     else:
         print_warn(f"Tool not installed: {screenshot_tool}")
         print_info('Skipping.')
@@ -376,7 +379,7 @@ def main():
 
             if len(ports) < 1:
                 print_warn(f"No ports found for {host}")
-                break
+                continue
 
             common = set(CONST_INTERESTING_PORTS) & set(ports)
             if bool(common):
