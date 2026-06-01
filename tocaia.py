@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+import tempfile
 import argparse
 from pathlib import Path
 import json
@@ -28,7 +29,7 @@ CONST_INTERESTING_PORTS = [
     '2375', '2379', '10250'
 ]
 
-RECON_TOOLS = [
+DNS_ENUM_RECON_TOOLS = [
     {
         "name": "subfinder",
         "cmd": lambda domain: ['subfinder', '-d', domain, '-silent', '-nc', '-all'],
@@ -105,7 +106,7 @@ def run_subdomain_discovery(domain: str) -> tuple[str, str]:
     commands = build_commands(domain=domain)
 
     if len(commands) < 1:
-        tools: list[str] = [str(tool['name']) for tool in RECON_TOOLS]
+        tools: list[str] = [str(tool['name']) for tool in DNS_ENUM_RECON_TOOLS]
         raise Exception(f"No enumeration tools are installed: {', '.join(tools)}")
 
     p_tr = subprocess.Popen(
@@ -277,13 +278,30 @@ def is_tool_installed(tool_name: str) -> bool:
 
 def build_commands(domain: str) -> list[list[str]]:
     commands = []
-    for tool in RECON_TOOLS:
+    for tool in DNS_ENUM_RECON_TOOLS:
         if is_tool_installed(tool_name=tool['name']):
             commands.append(tool['cmd'](domain))
             continue
         print_warn(f"Tool not installed: {tool['name']}")
         print_info("Skipping.")
     return commands
+
+
+def take_screenshot(hosts_file: str, output_dir: str | None = None) -> None:
+    cmd = [
+        'eyewitness',
+        '-f',
+        hosts_file,
+        '--no-prompt',
+    ]
+
+    if output_dir is not None:
+        cmd += [
+            '-d',
+            output_dir
+        ]
+
+    subprocess.run(cmd)
 
 
 def main():
@@ -302,7 +320,7 @@ def main():
 
     print_ok(f'Target: {args.domain}')
 
-    tools: list[str] = [str(tool['name']) for tool in RECON_TOOLS]
+    tools: list[str] = [str(tool['name']) for tool in DNS_ENUM_RECON_TOOLS]
 
     print_info(f'Enumerating subdomains using {", ".join(tools)}')
     subdomains_stdout, _ = run_subdomain_discovery(domain=args.domain)
@@ -312,6 +330,24 @@ def main():
     print_info("Using httpx to check for alive hosts.")
     http_hosts = check_alive_hosts(subdomains_stdout)
     subdomains: list[str] = []
+
+    screenshot_tool = 'eyewitness'
+    if is_tool_installed(screenshot_tool):
+        print_info(f'Taking screenshots of alive hosts with {screenshot_tool}.')
+
+        tmp_path = ''
+        ew_dir = f"{CONST_DOMAIN_FOLDER}/{screenshot_tool}"
+        shutil.rmtree(ew_dir, ignore_errors=True)
+        os.makedirs(ew_dir, exist_ok=True)
+
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.txt', delete=False) as tmp:
+            tmp.write('\n'.join(http_hosts))
+            tmp_path = tmp.name
+
+        take_screenshot(tmp_path, ew_dir)
+    else:
+        print_warn(f"Tool not installed: {screenshot_tool}")
+        print_info('Skipping.')
 
     for http_host in http_hosts:
         _, subdomain = http_host.split("//")
