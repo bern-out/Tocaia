@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+from concurrent.futures import ThreadPoolExecutor, as_completed
 import tempfile
 import argparse
 from pathlib import Path
@@ -85,9 +86,12 @@ Usage:
     ''')
 
 
-def is_domain_valid(domain: str) -> bool:
+def is_domain_valid(domain: str) -> str:
     pattern = r'^(?:[a-zA-Z0-9](?:[a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?\.)+[a-zA-Z]{2,}$'
-    return re.match(pattern, domain) is not None
+    if not re.match(pattern, domain):
+        raise argparse.ArgumentTypeError(f"Invalid domain format. Example: domain.com")
+
+    return domain
 
 
 def stream_output(pipe, target_stdin, lock: threading.Lock):
@@ -304,32 +308,21 @@ def take_screenshot(hosts_file: str, output_dir: str | None = None) -> None:
     subprocess.run(cmd)
 
 
-def main():
-    parser = argparse.ArgumentParser(description="Subdomain Automation for Discovery & Scanning hosts")
-    parser.add_argument('-d', '--domain', required=True, help='Target domain that will be scanned')
-    parser.add_argument('-igh', '--ignore-honeypot', action='store_true', help="Skips ephemeral ports scan.")
-
-    args = parser.parse_args()
-    if not is_domain_valid(args.domain):
-        raise argparse.ArgumentError(args.domain, "Domain format not valid.")
-
-    banner_box('BUG BOUNTY', 'Automating Subdomain Discovery & Scanning')
-
+def process_domain(domain: str, args: argparse.Namespace):
     print_info('Setting up directories')
-    run_directory_setup(name=args.domain)
 
-    print_ok(f'Target: {args.domain}')
+    run_directory_setup(name=domain)
+    print_ok(f'Target: {domain}')
 
     tools: list[str] = [str(tool['name']) for tool in DNS_ENUM_RECON_TOOLS]
 
     print_info(f'Enumerating subdomains using {", ".join(tools)}')
-    subdomains_stdout, _ = run_subdomain_discovery(domain=args.domain)
+    subdomains_stdout, _ = run_subdomain_discovery(domain=domain)
 
     print_ok(f"Got a list of {len(subdomains_stdout.splitlines())} subdomains!")
 
     print_info("Using httpx to check for alive hosts.")
     http_hosts = check_alive_hosts(subdomains_stdout)
-    subdomains: list[str] = []
 
     screenshot_tool = 'eyewitness'
     if is_tool_installed(screenshot_tool):
@@ -421,6 +414,22 @@ def main():
 
     with open(report_file_path, 'w') as f:
         json.dump(reports, f, indent=4, ensure_ascii=False)
+
+
+
+def main():
+    parser = argparse.ArgumentParser(description="Subdomain Automation for Discovery & Scanning hosts")
+
+    parser.add_argument('-d', '--domain', type=is_domain_valid, help='Target domain that will be scanned.')
+    parser.add_argument('-igh', '--ignore-honeypot', action='store_true', help="Skips ephemeral ports scan.")
+
+    args = parser.parse_args()
+
+    banner_box('BUG BOUNTY', 'Automating Subdomain Discovery & Scanning')
+
+    process_domain(domain=args.domain, args=args)
+
+    print_info("Exiting...")
 
 
 if __name__ == "__main__":
