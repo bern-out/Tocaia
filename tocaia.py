@@ -378,9 +378,6 @@ def process_domain(domain: str, args: argparse.Namespace):
             if bool(common):
                 print_warn(f"Interesting ports found: {common}")
 
-                print_info("Sending notification to user.")
-                run_notify(build_port_alert(host, ports, message="Interesting ports found."))
-
                 if not args.ignore_honeypot:
                     print_info("Verifing if it's a honeypot.")
 
@@ -395,6 +392,9 @@ def process_domain(domain: str, args: argparse.Namespace):
                 ports = scan_all_host_ports(host=host)
 
                 print_info(f"All ports open for {host}: {ports}")
+
+                print_info("Sending notification to user.")
+                run_notify(build_port_alert(host, ports, message="Interesting ports found."))
 
             print_ok(f"{len(ports)} ports found for {host}")
 
