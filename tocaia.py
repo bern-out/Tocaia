@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from dataclasses import asdict, dataclass
 import tempfile
 import argparse
 from pathlib import Path
@@ -8,9 +9,9 @@ import re
 import os
 from datetime import datetime
 import subprocess
+from typing import Dict
 from custom_logging import *
 import threading
-from typing import TypedDict
 import shutil
 
 CONST_DOMAINS_FOLDER = 'domains'
@@ -45,9 +46,16 @@ DNS_ENUM_RECON_TOOLS = [
     },
 ]
 
-class HostReport(TypedDict):
+@dataclass
+class HostReport:
     nmap_scan: list[str]
     nuclei_scan: list[str]
+
+
+class DomainWorkspace:
+    domain_path: Path
+    timestamp: str
+    report_path: Path
 
 
 build_port_alert = lambda host, ports, message: f"""
@@ -147,19 +155,23 @@ def run_subdomain_discovery(domain: str) -> tuple[str, str]:
     return standard_out, standard_err
 
 
-def run_directory_setup(name: str):
-    global CONST_DOMAINS_FOLDER, CONST_DOMAIN_FOLDER, CONST_DOMAIN_REPORT, CONST_RECON_TIMESTAMP
-    CONST_DOMAIN_FOLDER = f"{CONST_DOMAINS_FOLDER}/{name}"
+def run_directory_setup(
+    main_folder: Path,
+    date_format: str
+) -> DomainWorkspace:
+    workspace = DomainWorkspace()
 
-    fileDateFormat = "%Y%m%d_%H%M%S"
-    timestamp = datetime.now().strftime(fileDateFormat)
-    CONST_RECON_TIMESTAMP = timestamp
+    workspace.domain_path = main_folder
+    workspace.timestamp = datetime.now().strftime(date_format)
 
-    CONST_DOMAIN_FILENAME = str(timestamp) + '.json'
+    filename = str(workspace.timestamp) + '.json'
 
-    CONST_DOMAIN_REPORT =  CONST_DOMAIN_FOLDER + '/' + CONST_DOMAIN_FILENAME
+    workspace.report_path =  Path(workspace.domain_path, filename)
 
-    os.makedirs(CONST_DOMAIN_FOLDER, exist_ok=True)
+    workspace.domain_path.mkdir(parents=True, exist_ok=True)
+
+    return workspace
+
 
 def check_alive_hosts(stdout: str):
     command = ['httpx', '-silent']
@@ -309,12 +321,21 @@ def take_screenshot(hosts_file: str, output_dir: str | None = None) -> None:
 
 
 def process_domain(domain: str, args: argparse.Namespace):
+    domain_folder_path = Path(CONST_DOMAINS_FOLDER, domain)
+
     print_info('Setting up directories')
 
-    run_directory_setup(name=domain)
-    print_ok(f'Target: {domain}')
+    dateformat = "%Y%m%d_%H%M%S"
+    workspace = run_directory_setup(domain_folder_path, dateformat)
+    init_date = datetime.strptime(workspace.timestamp, dateformat)
+    interesting_ports = CONST_INTERESTING_PORTS
+    dns_enumeration_tools = DNS_ENUM_RECON_TOOLS
 
-    tools: list[str] = [str(tool['name']) for tool in DNS_ENUM_RECON_TOOLS]
+    print_ok(f'Target: {domain}')
+    print_info(f"Output: {workspace.domain_path}")
+    print_info(f"Initializing at {init_date}")
+
+    tools: list[str] = [str(tool['name']) for tool in dns_enumeration_tools]
 
     print_info(f'Enumerating subdomains using {", ".join(tools)}')
     subdomains_stdout, _ = run_subdomain_discovery(domain=domain)
@@ -324,12 +345,20 @@ def process_domain(domain: str, args: argparse.Namespace):
     print_info("Using httpx to check for alive hosts.")
     http_hosts = check_alive_hosts(subdomains_stdout)
 
+    if len(http_hosts) < 1:
+        print_warn("There is no alive hosts to continue scanning.")
+        return
+
+    print_ok(f"Got a list of {len(http_hosts)} subdomains that are active right now.")
+
+    subdomains: list[str] = []
+
     screenshot_tool = 'eyewitness'
     if is_tool_installed(screenshot_tool):
         print_info(f'Taking screenshots of alive hosts with {screenshot_tool}.')
 
         tmp_path = ''
-        ew_dir = f"{CONST_DOMAIN_FOLDER}/{screenshot_tool}"
+        ew_dir = f"{domain_folder_path.as_posix()}/{screenshot_tool}"
         shutil.rmtree(ew_dir, ignore_errors=True)
         os.makedirs(ew_dir, exist_ok=True)
 
@@ -349,22 +378,15 @@ def process_domain(domain: str, args: argparse.Namespace):
         _, subdomain = http_host.split("//")
         subdomains.append(subdomain)
 
-    global CONST_DOMAIN_REPORT
-    if CONST_DOMAIN_REPORT is None:
-        raise FileNotFoundError(f"Domain file not found: {CONST_DOMAIN_REPORT}")
-
-    report_file_path = Path(CONST_DOMAIN_REPORT)
-
-    reports: dict[str, HostReport] = {}
+    reports: dict[str, Dict] = {}
 
     if len(subdomains) > 0:
         print_info("Starting nmap scan for hosts.")
         for host in subdomains:
-
-            host_report: HostReport = {
-                'nmap_scan': [],
-                'nuclei_scan': [],
-            }
+            host_report = HostReport(
+                nmap_scan=[],
+                nuclei_scan=[],
+            )
 
             print_info(f"Scanning ports: {host}")
 
@@ -374,7 +396,7 @@ def process_domain(domain: str, args: argparse.Namespace):
                 print_warn(f"No ports found for {host}")
                 continue
 
-            common = set(CONST_INTERESTING_PORTS) & set(ports)
+            common = set(interesting_ports) & set(ports)
             if bool(common):
                 print_warn(f"Interesting ports found: {common}")
 
@@ -398,7 +420,7 @@ def process_domain(domain: str, args: argparse.Namespace):
 
             print_ok(f"{len(ports)} ports found for {host}")
 
-            host_report['nmap_scan'] = ports
+            host_report.nmap_scan = ports
 
             print_info(f"Running nuclei against {host}")
             found_vulnerabilities = run_http_nuclei_scan(host=host)
@@ -406,13 +428,13 @@ def process_domain(domain: str, args: argparse.Namespace):
             if len(found_vulnerabilities) > 0:
                 print_info(f"Found {len(found_vulnerabilities)} possible vulnerabilities.")
 
-            host_report['nuclei_scan'] = found_vulnerabilities
-            reports.setdefault(host, host_report)
+            host_report.nuclei_scan = found_vulnerabilities
+            reports.setdefault(host, asdict(host_report))
 
     else:
         print_warn("No alive hosts found. Skipping port scan.")
 
-    with open(report_file_path, 'w') as f:
+    with open(workspace.report_path, 'w') as f:
         json.dump(reports, f, indent=4, ensure_ascii=False)
 
 
