@@ -15,9 +15,6 @@ import threading
 import shutil
 
 CONST_DOMAINS_FOLDER = 'domains'
-CONST_DOMAIN_FOLDER = None
-CONST_DOMAIN_REPORT = None
-CONST_RECON_TIMESTAMP = ''
 CONST_INTERESTING_PORTS = [
     # databases
     '3306', '5432', '27017', '6379', '9200', '9300', '5984', '1433',
@@ -189,24 +186,18 @@ def check_alive_hosts(stdout: str):
 
 
 def scan_host_ports(host: str) -> list[str]:
-    result = [
+    completed_process = [
         'nmap', '-Pn', '-T4', '--top-ports', '1000', '--open', host
     ]
 
-    result = subprocess.run(
-        result,
+    completed_process = subprocess.run(
+        completed_process,
         stdout=subprocess.PIPE,
         stderr=subprocess.DEVNULL,
         text=True,
     )
 
-    ports: list[str] = []
-
-    for line in result.stdout.splitlines():
-        if '/tcp' or '/udp' in line:
-            first = line.split('/')[0].strip()
-            if first.isdigit():
-                ports.append(first)
+    ports: list[str] = parse_nmap_ports_stdout(process=completed_process)
 
     return ports
 
@@ -215,20 +206,14 @@ def scan_all_host_ports(host: str) -> list[str]:
         'nmap', '-Pn', '-T5', '-p-', '--open', host
     ]
 
-    result = subprocess.run(
+    completed_process = subprocess.run(
         nmap_cmd,
         stdout=subprocess.PIPE,
         stderr=subprocess.DEVNULL,
         text=True,
     )
 
-    ports: list[str] = []
-
-    for line in result.stdout.splitlines():
-        if '/tcp' in line or '/udp' in line:
-            first = line.split('/')[0].strip()
-            if first.isdigit():
-                ports.append(first)
+    ports: list[str] = parse_nmap_ports_stdout(process=completed_process)
 
     return ports
 
@@ -242,20 +227,14 @@ def verify_for_honeypot(host: str) -> bool:
         'nmap', '-Pn', '-p', str_ephemeral_ports, '--open', host
     ]
 
-    result = subprocess.run(
+    completed_process = subprocess.run(
         nmap_cmd,
         stdout=subprocess.PIPE,
         stderr=subprocess.DEVNULL,
         text=True
     )
 
-    ports: list[str] = []
-
-    for line in result.stdout.splitlines():
-        if '/tcp' or '/udp' in line:
-            first = line.split('/')[0].strip()
-            if first.isdigit():
-                ports.append(first)
+    ports: list[str] = parse_nmap_ports_stdout(process=completed_process)
 
     return len(ports) > 0
 
@@ -318,6 +297,17 @@ def take_screenshot(hosts_file: str, output_dir: str | None = None) -> None:
         ]
 
     subprocess.run(cmd)
+
+def parse_nmap_ports_stdout(process: subprocess.CompletedProcess[str]) -> list[str]:
+    ports: list[str] = []
+
+    for line in process.stdout.splitlines():
+        if '/tcp' in line or '/udp' in line:
+            first = line.split('/')[0].strip()
+            if first.isdigit():
+                ports.append(first)
+
+    return ports
 
 
 def process_domain(domain: str, args: argparse.Namespace):
