@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+from urllib3.util import parse_url
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import asdict, dataclass
 import tempfile
@@ -372,8 +373,9 @@ def process_domain(domain: str, args: argparse.Namespace):
         print_info('Skipping.')
 
     for http_host in http_hosts:
-        _, subdomain = http_host.split("//")
-        subdomains.append(subdomain)
+        url = parse_url(http_host)
+        host = str(url.host)
+        subdomains.append(host)
 
     reports: dict[str, Dict] = {}
 
