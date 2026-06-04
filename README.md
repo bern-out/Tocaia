@@ -10,7 +10,7 @@
   <a href="LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/License-MIT-F5C542?style=for-the-badge"></a>
 </p>
 
-Tocaia is a command-line recon helper for authorized bug bounty and security testing workflows. It automates subdomain discovery, checks which discovered hosts are alive, optionally captures screenshots, scans ports, runs HTTP nuclei templates, and writes per-domain JSON reports.
+Lightweight bug bounty reconnaissance pipeline that automates discovery, validation, screenshots, port scanning, and vulnerability checks.
 
 Use this only on targets you own or have explicit permission to test.
 
