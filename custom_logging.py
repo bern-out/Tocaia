@@ -1,6 +1,8 @@
 from datetime import datetime
 from enum import Enum
+from pathlib import Path
 import threading
+from typing import TextIO
 
 class LogLevel(Enum):
     INFO = 'INFO'
@@ -14,6 +16,7 @@ class LogLevel(Enum):
 
 class CustomLogger:
     _lock = threading.Lock()
+    _log_file: TextIO | None = None
 
     _colors = {
         LogLevel.INFO:      '\033[94m',
@@ -29,18 +32,29 @@ class CustomLogger:
     def __init__(self, domain: str = ''):
         self.__domain = domain
 
+    @classmethod
+    def set_log_file(cls, file: Path):
+        file.parent.mkdir(parents=True, exist_ok=True)
+        cls._log_file = file.open('a', encoding='utf-8')
 
     def _emit(self, level: LogLevel, message: str):
         date_format = "%Y-%m-%d %H:%M:%S"
         ts = datetime.now().strftime(date_format)
+
         prefix = f"[{self.__domain}] " if self.__domain else ""
         color = self._colors[level]
         reset = self._colors[LogLevel.DEFAULT]
         bold = self._colors[LogLevel.BOLD]
-        line = f"{prefix}{color}{level.value}{reset} {bold}[{ts}]{reset} {message}{reset}"
+
+        terminal_line = f"{prefix}{color}{level.value}{reset} {bold}[{ts}]{reset} {message}{reset}"
+        file_line = f'{prefix}{level.value} [{ts}] {message}'
 
         with self._lock:
-            print(line)
+            if self._log_file:
+                self._log_file.write(file_line + '\n')
+                self._log_file.flush()
+            else:
+                print(terminal_line)
 
     def info(self, message: str):
         self._emit(LogLevel.INFO, message)

@@ -452,6 +452,7 @@ def main():
 
     parser.add_argument('-mw', '--max-workers', type=int, default=10, help='The maximoum number of active workers.')
     parser.add_argument('-igh', '--ignore-honeypot', action='store_true', help="Skips ephemeral ports scan.")
+    parser.add_argument('-o', '--output-log', type=Path, help='Redirect logs to a file.')
 
     args = parser.parse_args()
     domains: list[str] = []
@@ -461,6 +462,9 @@ def main():
             domains += [d.strip() for d in f.read().splitlines() if d.strip()]
     else:
         domains.append(args.domain)
+
+    if args.output_log:
+        CustomLogger.set_log_file(args.output_log)
 
     banner_box('BUG BOUNTY', 'Automating Subdomain Discovery & Scanning')
 
