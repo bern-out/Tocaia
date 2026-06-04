@@ -1,22 +1,47 @@
-class bcolors:
-    HEADER = '\033[95m'
-    OKBLUE = '\033[94m'
-    OKCYAN = '\033[96m'
-    OKGREEN = '\033[92m'
-    WARNING = '\033[93m'
-    FAIL = '\033[91m'
-    ENDC = '\033[0m'
-    BOLD = '\033[1m'
-    UNDERLINE = '\033[4m'
+from datetime import datetime
+from enum import Enum
+import threading
 
-def print_warn(msg: str):
-    print(f'{bcolors.WARNING} [-] {msg}{bcolors.ENDC}')
+class LogLevel(Enum):
+    INFO = 'INFO'
+    WARN = 'WARN'
+    ERROR = 'ERROR'
+    OK = 'OK'
 
-def print_error(msg: str):
-    print(f'{bcolors.FAIL} [-] {msg}{bcolors.ENDC}')
 
-def print_ok(msg: str):
-    print(f'{bcolors.OKGREEN} [+] {msg}{bcolors.ENDC}')
+class CustomLogger:
+    _lock = threading.Lock()
 
-def print_info(msg: str):
-    print(f'{bcolors.OKBLUE} [*] {msg}{bcolors.ENDC}')
+    _colors = {
+        LogLevel.INFO:  '\033[94m',
+        LogLevel.WARN:  '\033[93m',
+        LogLevel.ERROR: '\033[91m',
+        LogLevel.OK:    '\033[92m',
+    }
+
+
+    def __init__(self, domain: str = ''):
+        self.__domain = domain
+
+
+    def _emit(self, level: LogLevel, message: str):
+        date_format = "%Y-%m-%d %H:%M:%S"
+        ts = datetime.now().strftime(date_format)
+        prefix = f"[{self.__domain}] " if self.__domain else ""
+        color = self._colors[level]
+        line = f"{color}{prefix}{level.value} [{ts}] {message}\033[0m"
+
+        with self._lock:
+            print(line)
+
+    def info(self, message: str):
+        self._emit(LogLevel.INFO, message)
+
+    def warn(self, message: str):
+        self._emit(LogLevel.WARN, message)
+
+    def error(self, message: str):
+        self._emit(LogLevel.ERROR, message)
+
+    def ok(self, message: str):
+        self._emit(LogLevel.OK, message)
