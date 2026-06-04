@@ -355,7 +355,6 @@ def process_domain(domain: str, args: argparse.Namespace):
     if is_tool_installed(screenshot_tool):
         print_info(f'Taking screenshots of alive hosts with {screenshot_tool}.')
 
-        tmp_path = ''
         ew_dir = f"{domain_folder_path.as_posix()}/{screenshot_tool}"
         shutil.rmtree(ew_dir, ignore_errors=True)
         os.makedirs(ew_dir, exist_ok=True)
