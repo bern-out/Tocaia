@@ -45,14 +45,26 @@ The scanner skips optional tools that are not installed where possible, but subd
 
 ## Installation
 
-Clone the repository and install the Python dependency:
+Install it as an isolated command with `pipx`:
 
 ```bash
-git clone <repo-url>
+pipx install git+https://github.com/bern-out/Tocaia.git
+```
+
+Then run:
+
+```bash
+tocaia -d example.com
+```
+
+For local development, clone the repository and install it in editable mode:
+
+```bash
+git clone https://github.com/bern-out/Tocaia.git
 cd tocaia
 python3 -m venv .venv
 source .venv/bin/activate
-python3 -m pip install urllib3
+python3 -m pip install -e .
 ```
 
 Install the external security tools with your preferred package manager or from each tool's official installation instructions.
@@ -62,37 +74,37 @@ Install the external security tools with your preferred package manager or from 
 Scan a single domain:
 
 ```bash
-python3 tocaia.py -d example.com
+tocaia -d example.com
 ```
 
 Scan domains from a file:
 
 ```bash
-python3 tocaia.py -f domains.txt
+tocaia -f domains.txt
 ```
 
 Limit concurrent workers:
 
 ```bash
-python3 tocaia.py -f domains.txt --max-workers 5
+tocaia -f domains.txt --max-workers 5
 ```
 
 Skip honeypot checks:
 
 ```bash
-python3 tocaia.py -d example.com --ignore-honeypot
+tocaia -d example.com --ignore-honeypot
 ```
 
 Redirect application logs to a file:
 
 ```bash
-python3 tocaia.py -d example.com --output-log logs/tocaia.log
+tocaia -d example.com --output-log logs/tocaia.log
 ```
 
 Short options are also available:
 
 ```bash
-python3 tocaia.py -d example.com -mw 5 -igh -o logs/tocaia.log
+tocaia -d example.com -mw 5 -igh -o logs/tocaia.log
 ```
 
 ## Output
