@@ -103,8 +103,12 @@ def stream_output(pipe, target_stdin, lock: threading.Lock):
     try:
         for line in iter(pipe.readline, b''):
             with lock:
-                target_stdin.write(line)
-                target_stdin.flush()
+                try:
+                    target_stdin.write(line)
+                    target_stdin.flush()
+                except BrokenPipeError as e:
+                    print_error(f"Stream output error: {e}")
+                    break
     finally:
         pipe.close()
 
