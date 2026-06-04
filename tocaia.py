@@ -135,6 +135,9 @@ def run_subdomain_discovery(domain: str) -> tuple[str, str]:
         text=True
     )
 
+    if p_tr.stdout:
+        p_tr.stdout.close()
+
     threads: list[threading.Thread] = []
 
     for cmd in commands:
