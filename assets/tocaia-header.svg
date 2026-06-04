@@ -1,0 +1,70 @@
+<svg width="1200" height="420" viewBox="0 0 1200 420" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="title desc">
+  <title id="title">Tocaia</title>
+  <desc id="desc">A stylized recon dashboard banner with network nodes, terminal traces, and the Tocaia project name.</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1200" y2="420" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#071014"/>
+      <stop offset="0.45" stop-color="#0D1F24"/>
+      <stop offset="1" stop-color="#18251F"/>
+    </linearGradient>
+    <linearGradient id="accent" x1="206" y1="88" x2="1042" y2="360" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#18F2B2"/>
+      <stop offset="0.52" stop-color="#35A7FF"/>
+      <stop offset="1" stop-color="#F5C542"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(583 216) rotate(26.6129) scale(566.413 262.278)">
+      <stop stop-color="#18F2B2" stop-opacity="0.3"/>
+      <stop offset="0.56" stop-color="#35A7FF" stop-opacity="0.12"/>
+      <stop offset="1" stop-color="#071014" stop-opacity="0"/>
+    </radialGradient>
+    <filter id="softGlow" x="-40%" y="-40%" width="180%" height="180%" color-interpolation-filters="sRGB">
+      <feGaussianBlur stdDeviation="12" result="blur"/>
+      <feColorMatrix in="blur" type="matrix" values="0 0 0 0 0.09 0 0 0 0 0.95 0 0 0 0 0.7 0 0 0 0.7 0"/>
+      <feBlend in="SourceGraphic" mode="screen"/>
+    </filter>
+    <pattern id="grid" width="48" height="48" patternUnits="userSpaceOnUse">
+      <path d="M48 0H0V48" stroke="#FFFFFF" stroke-opacity="0.055" stroke-width="1"/>
+    </pattern>
+  </defs>
+
+  <rect width="1200" height="420" rx="28" fill="url(#bg)"/>
+  <rect width="1200" height="420" rx="28" fill="url(#grid)"/>
+  <rect width="1200" height="420" rx="28" fill="url(#glow)"/>
+
+  <path d="M114 318C209 237 293 279 383 202C475 124 562 91 684 135C778 169 835 114 916 92C996 70 1077 93 1126 134" stroke="url(#accent)" stroke-width="2.5" stroke-opacity="0.55"/>
+  <path d="M85 162C194 189 272 133 365 156C451 177 490 251 591 247C681 243 737 179 836 203C932 226 1005 299 1119 250" stroke="#35A7FF" stroke-width="1.5" stroke-opacity="0.27"/>
+  <path d="M95 278H235L278 229H390L439 280H610L676 184H781L824 237H948L1004 188H1110" stroke="#F5C542" stroke-width="2" stroke-opacity="0.34"/>
+
+  <g filter="url(#softGlow)">
+    <circle cx="235" cy="318" r="6" fill="#18F2B2"/>
+    <circle cx="383" cy="202" r="7" fill="#35A7FF"/>
+    <circle cx="684" cy="135" r="8" fill="#18F2B2"/>
+    <circle cx="916" cy="92" r="6" fill="#F5C542"/>
+    <circle cx="1004" cy="188" r="6" fill="#35A7FF"/>
+  </g>
+
+  <g opacity="0.9">
+    <rect x="100" y="92" width="292" height="168" rx="16" fill="#091418" stroke="#FFFFFF" stroke-opacity="0.12"/>
+    <rect x="100" y="92" width="292" height="34" rx="16" fill="#FFFFFF" fill-opacity="0.06"/>
+    <circle cx="123" cy="109" r="5" fill="#FF5F57"/>
+    <circle cx="142" cy="109" r="5" fill="#FFBD2E"/>
+    <circle cx="161" cy="109" r="5" fill="#28C840"/>
+    <text x="124" y="158" fill="#18F2B2" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="19">tocaia -d target.tld</text>
+    <text x="124" y="190" fill="#A7F3D0" fill-opacity="0.9" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="17">[INFO] enumerating subs</text>
+    <text x="124" y="220" fill="#F5C542" fill-opacity="0.94" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="17">[WARN] interesting ports</text>
+  </g>
+
+  <g transform="translate(766 131)">
+    <path d="M105 0L210 60V180L105 240L0 180V60L105 0Z" fill="#0B171B" stroke="url(#accent)" stroke-width="3"/>
+    <path d="M105 38L176 79V161L105 202L34 161V79L105 38Z" stroke="#18F2B2" stroke-opacity="0.72" stroke-width="2"/>
+    <path d="M105 75L143 97V143L105 165L67 143V97L105 75Z" fill="#10272A" stroke="#F5C542" stroke-opacity="0.8" stroke-width="2"/>
+    <circle cx="105" cy="120" r="10" fill="#18F2B2"/>
+    <path d="M105 38V75M105 165V202M34 79L67 97M143 143L176 161M176 79L143 97M67 143L34 161" stroke="#35A7FF" stroke-opacity="0.72" stroke-width="2"/>
+  </g>
+
+  <text x="600" y="190" text-anchor="middle" fill="#F4F7F5" font-family="Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif" font-size="78" font-weight="800" letter-spacing="0">Tocaia</text>
+  <text x="600" y="238" text-anchor="middle" fill="#B8C7C0" font-family="Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif" font-size="24" font-weight="500">subdomain discovery and scanning automation</text>
+
+  <rect x="484" y="273" width="232" height="38" rx="19" fill="#FFFFFF" fill-opacity="0.08" stroke="#FFFFFF" stroke-opacity="0.12"/>
+  <text x="600" y="299" text-anchor="middle" fill="#DDE7E2" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="17">recon • nmap • nuclei</text>
+</svg>
