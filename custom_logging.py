@@ -7,16 +7,22 @@ class LogLevel(Enum):
     WARN = 'WARN'
     ERROR = 'ERROR'
     OK = 'OK'
+    DEFAULT = 'DEFAULT'
+    BOLD    = 'BOLD'
+    UNDERLINE = 'UNDERLINE'
 
 
 class CustomLogger:
     _lock = threading.Lock()
 
     _colors = {
-        LogLevel.INFO:  '\033[94m',
-        LogLevel.WARN:  '\033[93m',
-        LogLevel.ERROR: '\033[91m',
-        LogLevel.OK:    '\033[92m',
+        LogLevel.INFO:      '\033[94m',
+        LogLevel.WARN:      '\033[93m',
+        LogLevel.ERROR:     '\033[91m',
+        LogLevel.OK:        '\033[92m',
+        LogLevel.DEFAULT:   '\033[0m',
+        LogLevel.BOLD:      '\033[1m',
+        LogLevel.UNDERLINE: '\033[4m',
     }
 
 
@@ -29,7 +35,9 @@ class CustomLogger:
         ts = datetime.now().strftime(date_format)
         prefix = f"[{self.__domain}] " if self.__domain else ""
         color = self._colors[level]
-        line = f"{color}{prefix}{level.value} [{ts}] {message}\033[0m"
+        reset = self._colors[LogLevel.DEFAULT]
+        bold = self._colors[LogLevel.BOLD]
+        line = f"{prefix}{color}{level.value}{reset} {bold}[{ts}]{reset} {message}{reset}"
 
         with self._lock:
             print(line)

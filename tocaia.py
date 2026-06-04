@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 from urllib3.util import parse_url
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
 import tempfile
 import argparse
 from pathlib import Path
@@ -50,10 +50,11 @@ class HostReport:
     nuclei_scan: list[str]
 
 
+@dataclass
 class DomainWorkspace:
-    domain_path: Path
-    timestamp: str
-    report_path: Path
+    domain_path: Path = field(default_factory=Path)
+    timestamp: str = ''
+    report_path: Path = field(default_factory=Path)
 
 
 build_port_alert = lambda host, ports, message: f"""
@@ -75,7 +76,7 @@ def banner_box(text: str, subtitle: str):
 
     width = max(len(line) for line in lines)
 
-    print(bcolors.OKCYAN)
+    print('\033[96m')
     print("┌" + "─" * (width + 2) + "┐")
 
     for line in lines:
@@ -84,12 +85,6 @@ def banner_box(text: str, subtitle: str):
     print("└" + "─" * (width + 2) + "┘")
     
     print("\033[0m")
-
-def print_usage():
-    print('''
-Usage:
-    recon <domain>
-    ''')
 
 
 def is_domain_valid(domain: str) -> str:
@@ -100,7 +95,7 @@ def is_domain_valid(domain: str) -> str:
     return domain
 
 
-def stream_output(pipe, target_stdin, lock: threading.Lock):
+def stream_output(pipe, target_stdin, lock: threading.Lock, logger: CustomLogger):
     try:
         for line in iter(pipe.readline, b''):
             with lock:
@@ -108,16 +103,16 @@ def stream_output(pipe, target_stdin, lock: threading.Lock):
                     target_stdin.write(line)
                     target_stdin.flush()
                 except BrokenPipeError as e:
-                    print_error(f"Stream output error: {e}")
+                    logger.error(f"Stream output error: {e}")
                     break
     finally:
         pipe.close()
 
 
-def run_subdomain_discovery(domain: str) -> tuple[str, str]:
+def run_subdomain_discovery(domain: str, log: CustomLogger) -> tuple[str, str]:
     lock = threading.Lock()
 
-    commands = build_commands(domain=domain)
+    commands = build_commands(domain=domain, logger=log)
 
     if len(commands) < 1:
         tools: list[str] = [str(tool['name']) for tool in DNS_ENUM_RECON_TOOLS]
@@ -145,7 +140,7 @@ def run_subdomain_discovery(domain: str) -> tuple[str, str]:
         p = subprocess.Popen(cmd, stdout=subprocess.PIPE)
         t = threading.Thread(
             target=stream_output,
-            args=(p.stdout, p_tr.stdin, lock)
+            args=(p.stdout, p_tr.stdin, lock, log)
         )
         t.start()
         threads.append(t)
@@ -279,14 +274,14 @@ def is_tool_installed(tool_name: str) -> bool:
     return shutil.which(tool_name) is not None
 
 
-def build_commands(domain: str) -> list[list[str]]:
+def build_commands(domain: str, logger: CustomLogger) -> list[list[str]]:
     commands = []
     for tool in DNS_ENUM_RECON_TOOLS:
         if is_tool_installed(tool_name=tool['name']):
             commands.append(tool['cmd'](domain))
             continue
-        print_warn(f"Tool not installed: {tool['name']}")
-        print_info("Skipping.")
+        logger.warn(f"Tool not installed: {tool['name']}")
+        logger.info("Skipping.")
     return commands
 
 
@@ -318,10 +313,10 @@ def parse_nmap_ports_stdout(process: subprocess.CompletedProcess[str]) -> list[s
     return ports
 
 
-def process_domain(domain: str, args: argparse.Namespace):
+def process_domain(domain: str, args: argparse.Namespace, logger: CustomLogger):
     domain_folder_path = Path(CONST_DOMAINS_FOLDER, domain)
 
-    print_info('Setting up directories')
+    logger.info('Setting up directories')
 
     dateformat = "%Y%m%d_%H%M%S"
     workspace = run_directory_setup(domain_folder_path, dateformat)
@@ -329,31 +324,35 @@ def process_domain(domain: str, args: argparse.Namespace):
     interesting_ports = CONST_INTERESTING_PORTS
     dns_enumeration_tools = DNS_ENUM_RECON_TOOLS
 
-    print_ok(f'Target: {domain}')
-    print_info(f"Output: {workspace.domain_path}")
-    print_info(f"Initializing at {init_date}")
+    logger.info(f'Target: {domain}')
+    logger.info(f"Output: {workspace.domain_path}")
+    logger.info(f"Initializing at {init_date}")
 
     tools: list[str] = [str(tool['name']) for tool in dns_enumeration_tools]
 
-    print_info(f'Enumerating subdomains using {", ".join(tools)}')
-    subdomains_stdout, _ = run_subdomain_discovery(domain=domain)
+    logger.info(f'Enumerating subdomains using {", ".join(tools)}')
+    subdomains_stdout, _ = run_subdomain_discovery(domain=domain, log=logger)
 
-    print_ok(f"Got a list of {len(subdomains_stdout.splitlines())} subdomains!")
+    if len(subdomains_stdout.splitlines()) < 1:
+        logger.error("No subdomains found for host.")
+        return
 
-    print_info("Using httpx to check for alive hosts.")
+    logger.info(f"Got a list of {len(subdomains_stdout.splitlines())} subdomains!")
+
+    logger.info("Using httpx to check for alive hosts.")
     http_hosts = check_alive_hosts(subdomains_stdout)
 
     if len(http_hosts) < 1:
-        print_warn("There is no alive hosts to continue scanning.")
+        logger.warn("There is no alive hosts to continue scanning.")
         return
 
-    print_ok(f"Got a list of {len(http_hosts)} subdomains that are active right now.")
+    logger.info(f"Got a list of {len(http_hosts)} subdomains that are active right now.")
 
     subdomains: list[str] = []
 
     screenshot_tool = 'eyewitness'
     if is_tool_installed(screenshot_tool):
-        print_info(f'Taking screenshots of alive hosts with {screenshot_tool}.')
+        logger.info(f'Taking screenshots of alive hosts with {screenshot_tool}.')
 
         ew_dir = f"{domain_folder_path.as_posix()}/{screenshot_tool}"
         shutil.rmtree(ew_dir, ignore_errors=True)
@@ -368,8 +367,8 @@ def process_domain(domain: str, args: argparse.Namespace):
         finally:
             os.unlink(tmp_path)
     else:
-        print_warn(f"Tool not installed: {screenshot_tool}")
-        print_info('Skipping.')
+        logger.warn(f"Tool not installed: {screenshot_tool}")
+        logger.info('Skipping.')
 
     for http_host in http_hosts:
         url = parse_url(http_host)
@@ -379,58 +378,58 @@ def process_domain(domain: str, args: argparse.Namespace):
     reports: dict[str, Dict] = {}
 
     if len(subdomains) > 0:
-        print_info("Starting nmap scan for hosts.")
+        logger.info("Starting nmap scan for hosts.")
         for host in subdomains:
             host_report = HostReport(
                 nmap_scan=[],
                 nuclei_scan=[],
             )
 
-            print_info(f"Scanning ports: {host}")
+            logger.info(f"Scanning ports: {host}")
 
             ports = scan_host_ports(host=host)
 
             if len(ports) < 1:
-                print_warn(f"No ports found for {host}")
+                logger.warn(f"No ports found for {host}")
                 continue
 
             common = set(interesting_ports) & set(ports)
             if bool(common):
-                print_warn(f"Interesting ports found: {common}")
+                logger.warn(f"Interesting ports found: {common}")
 
                 if not args.ignore_honeypot:
-                    print_info("Verifing if it's a honeypot.")
+                    logger.info("Verifing if it's a honeypot.")
 
                     if verify_for_honeypot(host=host):
-                        print_warn("High ephemeral ports detected (port spoofer). Skipping target.")
+                        logger.warn("High ephemeral ports detected (port spoofer). Skipping target.")
                         continue
 
-                    print_info("The host doesn't seem to be a honeypot.")
+                    logger.info("The host doesn't seem to be a honeypot.")
 
-                print_info("Going for full port scan.")
+                logger.info("Going for full port scan.")
 
                 ports = scan_all_host_ports(host=host)
 
-                print_info(f"All ports open for {host}: {ports}")
+                logger.info(f"All ports open for {host}: {ports}")
 
-                print_info("Sending notification to user.")
+                logger.info("Sending notification to user.")
                 run_notify(build_port_alert(host, ports, message="Interesting ports found."))
 
-            print_ok(f"{len(ports)} ports found for {host}")
+            logger.info(f"{len(ports)} ports found for {host}")
 
             host_report.nmap_scan = ports
 
-            print_info(f"Running nuclei against {host}")
+            logger.info(f"Running nuclei against {host}")
             found_vulnerabilities = run_http_nuclei_scan(host=host)
 
             if len(found_vulnerabilities) > 0:
-                print_info(f"Found {len(found_vulnerabilities)} possible vulnerabilities.")
+                logger.info(f"Found {len(found_vulnerabilities)} possible vulnerabilities.")
 
             host_report.nuclei_scan = found_vulnerabilities
             reports.setdefault(host, asdict(host_report))
 
     else:
-        print_warn("No alive hosts found. Skipping port scan.")
+        logger.warn("No alive hosts found. Skipping port scan.")
 
     with open(workspace.report_path, 'w') as f:
         json.dump(reports, f, indent=4, ensure_ascii=False)
@@ -438,24 +437,59 @@ def process_domain(domain: str, args: argparse.Namespace):
 
 
 def main():
+    max_workers_default = 10
+
     parser = argparse.ArgumentParser(description="Subdomain Automation for Discovery & Scanning hosts")
 
-    parser.add_argument('-d', '--domain', type=is_domain_valid, help='Target domain that will be scanned.')
+    domainGroup = parser.add_mutually_exclusive_group(required=True)
+    domainGroup.add_argument(
+        '-d',
+        '--domain', 
+        type=is_domain_valid, 
+        help=f'Target domain that will be scanned (default={max_workers_default}).'
+    )
+    domainGroup.add_argument('-f', '--file', type=Path, help='Target domains that will be scanned.')
+
+    parser.add_argument('-mw', '--max-workers', type=int, default=10, help='The maximoum number of active workers.')
     parser.add_argument('-igh', '--ignore-honeypot', action='store_true', help="Skips ephemeral ports scan.")
 
     args = parser.parse_args()
+    domains: list[str] = []
+
+    if args.file:
+        with args.file.open('r') as f:
+            domains += [d.strip() for d in f.read().splitlines() if d.strip()]
+    else:
+        domains.append(args.domain)
 
     banner_box('BUG BOUNTY', 'Automating Subdomain Discovery & Scanning')
 
-    process_domain(domain=args.domain, args=args)
+    max_workers = min(args.max_workers, len(domains))
 
-    print_info("Exiting...")
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        futures_list = [
+            executor.submit(
+                process_domain, domain, args, CustomLogger(
+                    domain=domain,
+                )
+            )
+            for domain in domains
+        ]
+
+        for future in as_completed(futures_list):
+            try:
+                future.result()
+            except Exception as e:
+                print(f"Domain scan failed: {e}")
+
+    print("Exiting...")
 
 
 if __name__ == "__main__":
     try:
         main()
     except KeyboardInterrupt:
-        print_warn('CTRL + C signal received. Exiting program...')
+        print('CTRL + C signal received. Exiting program...')
     except Exception as e:
-        print_error(f'An error occurred: {type(e).__name__} - {e}')
+        print(f'An error occurred: {type(e).__name__} - {e}')
+
